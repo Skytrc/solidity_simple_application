@@ -178,6 +178,7 @@ contract SERC20 is ERC20 {
 > https://eips.ethereum.org/EIPS/eip-20
 > 
 > [Solidity by Example](https://solidity-by-example.org/app/erc20/)
+>
 > https://soliditydeveloper.com/foundry
 > 
 > https://github.com/OpenZeppelin/openzeppelin-contracts/blob/9b3710465583284b8c4c5d2245749246bb2e0094/contracts/token/ERC20/ERC20.sol
