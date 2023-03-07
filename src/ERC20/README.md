@@ -46,10 +46,11 @@ ERC20标准一共有两个事件
 function totalSupply() external view returns (uint256) {
         return _totalSupply;
 }
-
 ```
 
 ---
+
+输入：查询地址
 
 返回查询地址的token余额。
 
@@ -63,17 +64,35 @@ function balanceOf(address account) external view returns (uint256) {
 
 查询授权余额。
 
+输入：
+
+* `owner`：拥有者地址
+
+* `spender`：授权者地址
+
 ```solidity
 function allowance(address owner, address spender) external view returns (uint256) {
         return _allowance[owner][spender];
 }
 ```
 
-
-
 ---
 
-token转账。此交易由token拥有者发起，给出接收者地址和转账数量。通过`_balance`的加减完成交易。
+**transfer**
+
+转账函数
+
+输入：
+
+* `recipient`：接受者地址
+
+* `amount`：数量
+
+步骤
+
+1. 验证余额大于需要转账token的数量
+
+2. 分被给转账者，接收者加减数量
 
 ```solidity
 function transfer(address recipient, uint256 amount) external returns (bool) {
@@ -88,7 +107,15 @@ function transfer(address recipient, uint256 amount) external returns (bool) {
 
 ---
 
-授权许可。给出授权者地址和额度，完成授权。之后授权者可以通过`transferFrom`完成转账，不再需要通过token拥有者的确认。
+**approve**
+
+授权许可
+
+输入：
+
+* `spender`：授权地址
+
+* `amount`：数量
 
 ```solidity
 function approve(address spender, uint256 amount) external returns (bool) {
@@ -100,11 +127,29 @@ function approve(address spender, uint256 amount) external returns (bool) {
 
 ---
 
-`transferFrom`授权者转账，与上面说的一样，不需要token拥有者的确认。先通过验证，再操作`_balance`和`_allowance`（余额也需要扣除）。
+**transferFrom**
+
+授权者转账，与上面说的一样，不需要token拥有者的确认。
+
+输入：
+
+* `sender` ：发送地址
+
+* `recipient`：接收地址
+
+* `amount`：发送数量
+
+步骤：
+
+1. 验证余额大于发送数量，验证授权数量大于发送数量
+
+2. 加减接收地址，发送地址余额
+
+3. 授权额度也要减少
 
 ```solidity
 function transferFrom(
-        address sender,
+        address spender,
         address recipient,
         uint256 amount
     ) external returns (bool) {
@@ -122,7 +167,21 @@ function transferFrom(
 
 ---
 
-`mint` 挖出代币，用于生成代币。增加总供应量，增加对应地址的余额。
+**mint**
+
+挖出代币，用于生成代币。
+
+输入：
+
+* `account`：接收地址
+
+* `amount`：发送数量
+
+步骤
+
+1. 总供应量增加
+
+2. 接收地址余额增加
 
 ```solidity
 function mint(address account, uint256 amount) external returns (bool) {
@@ -135,7 +194,23 @@ function mint(address account, uint256 amount) external returns (bool) {
 
 ---
 
-`burn`销毁代币，与`mint`相反，减少总供应量，减少对应地址余额。
+**burn**
+
+销毁代币，与`mint`相反
+
+输入
+
+* `account`：需要销毁地址
+
+* `amount`：销毁数量
+
+步骤
+
+1. 检查余额是否大于销毁数量
+
+2. 总供应量减少
+
+3. 对应地址余额减少
 
 ```solidity
 function burn(address account, uint256 amount) external returns (bool) {
@@ -171,14 +246,12 @@ contract SERC20 is ERC20 {
 
 > https://docs.openzeppelin.com/contracts/4.x/api/token/erc20#IERC20
 
-
-
 ## 参考资料
 
 > https://eips.ethereum.org/EIPS/eip-20
 > 
 > [Solidity by Example](https://solidity-by-example.org/app/erc20/)
->
+> 
 > https://soliditydeveloper.com/foundry
 > 
 > https://github.com/OpenZeppelin/openzeppelin-contracts/blob/9b3710465583284b8c4c5d2245749246bb2e0094/contracts/token/ERC20/ERC20.sol
