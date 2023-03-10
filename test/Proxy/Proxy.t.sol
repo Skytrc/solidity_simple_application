@@ -2,7 +2,7 @@
 pragma solidity ^0.8.17;
 
 import "forge-std/Test.sol";
-import "./../../src/Proxy/ProxyContract.sol";
+import "./../../src/proxy/ProxyContract.sol";
 
 contract ProxyTest is Test {
     Proxy internal proxy;
@@ -10,14 +10,17 @@ contract ProxyTest is Test {
 
     function setUp() public {
         logic = new Logic();
-        proxy = new Proxy(address(logic));
+        
     }
 
     function testProxy() public  {
+        proxy = new Proxy(address(logic));
         address proxyAddr = address(proxy);
         (bool success, ) = proxyAddr.call(abi.encodeWithSignature("setValue(uint256)", 155));   
-        require(success, "call function success");
+        assertEq(success, true);
         (, bytes memory data) = proxyAddr.call(abi.encodeWithSignature("getValue()"));
         assertEq(abi.decode(data,(uint)), 155);
+        assertEq(logic.getValue(), 0);
     }
+
 }
