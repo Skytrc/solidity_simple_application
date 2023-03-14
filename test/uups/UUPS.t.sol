@@ -43,7 +43,6 @@ contract UUPSTest is Test {
         (, bytes memory data1) = proxyAddr.call(abi.encodeWithSignature("getValue()"));
         assertEq(abi.decode(data1,(uint256)), 1235);
 
-        vm.changePrank(user);
         proxyAddr.call(abi.encodeWithSignature("increment()"));
         vm.stopPrank();
     }
