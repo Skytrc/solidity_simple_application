@@ -2,13 +2,16 @@
 pragma solidity ^0.8.17;
 
 import "solmate/tokens/ERC20.sol";
+import "./Factory.sol";
 
 contract Exchange is ERC20{
     address tokenAddress;
+    address factoryAddress;
 
     constructor(address _token) ERC20("MyUniswap-V1", "MUniv1", 0){
         require(_token != address(0), "invalid token address");
         tokenAddress = _token;
+        factoryAddress = msg.sender;
     }
 
     function addLiquidity(uint256 _tokenAmount) public payable returns(uint256) {
@@ -71,17 +74,17 @@ contract Exchange is ERC20{
         uint256 tokenReserve = getReserve();
       
         return getAmount(_ethSold, address(this).balance, tokenReserve);
-      }
+    }
 
-      function getEthAmount(uint256 _tokenSold) public view returns (uint256) {
+    function getEthAmount(uint256 _tokenSold) public view returns (uint256) {
         require(_tokenSold > 0, "tokenSold is too small");
-      
+        
         uint256 tokenReserve = getReserve();
-      
+        
         return getAmount(_tokenSold, tokenReserve, address(this).balance);
-      }
+    }
 
-    function ethToTokenSwap(uint256 _minTokens) public payable {
+    function ethToToken(uint256 _minTokens, address recipient) private {
         uint256 tokenReserve = getReserve();
         uint256 tokensBough = getAmount(
             msg.value,
@@ -90,7 +93,15 @@ contract Exchange is ERC20{
         );
 
         require(tokensBough >= _minTokens, "insufficient output amount");
-        ERC20(tokenAddress).transfer(msg.sender, tokensBough);
+        ERC20(tokenAddress).transfer(recipient, tokensBough);
+    }
+
+    function ethToTokenTransfer(uint256 _minTokens, address _recipient) public payable {
+        ethToToken(_minTokens, _recipient);
+    }
+
+    function ethToTokenSwap(uint256 _minTokens) public payable {
+        ethToToken(_minTokens, msg.sender);
     }
 
     function tokenToEth(uint256 _tokensSold, uint256 _mintEth) public {
@@ -104,6 +115,37 @@ contract Exchange is ERC20{
 
         ERC20(tokenAddress).transferFrom(msg.sender, address(this),_tokensSold);
         payable(msg.sender).transfer(ethBought);
+    }
+
+    function tokenTotokenSwap(
+        uint256 _tokensSold,
+        uint256 _mintTokensBought,
+        address _tokenAddress
+    ) public {
+        address exchangeAddress = Factory(factoryAddress).getAddress(_tokenAddress);
+        require(
+            exchangeAddress != address(this) && exchangeAddress != address(0),
+            "invalid exchange address"
+        );
+
+        uint256 tokenReserve = getReserve();
+        uint256 tokensBought = getAmount(
+            _tokensSold,
+            tokenReserve,
+            address(this).balance
+        );
+
+        ERC20(tokenAddress).transferFrom(
+            msg.sender,
+            address(this),
+            _tokensSold
+        );
+        
+        Exchange(exchangeAddress).ethToTokenTransfer{value: ethBought}(
+            _mintTokensBought, 
+            msg.sender
+        );
+        
     }
     
 }

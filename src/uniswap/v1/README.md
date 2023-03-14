@@ -38,7 +38,7 @@ $x * y = k$
 
 当有人从流动性池中买入或卖出一种代币时，会改变$x$和$y$的值，从而影响价格。为了保持k不变，买入或卖出一种代币时必须**支付另一种代币作为费用**。这些费用会留在流动性池中，增加流动性提供者的收益。
 
-![cpmm.png](D:\GitHub\solidity_simple_application\res\ERC721\uniswap\cpmm.png)
+![cpmm.png](../../../res/uniswap/cpmm.png)
 
 图片来源：[Automated Market Makers (AMMs) Explained | Chainlink](https://chain.link/education-hub/what-is-an-automated-market-maker-amm)
 
@@ -246,8 +246,6 @@ $Px$ 和$Py$ 分别是`Eth`和`token`的价格。他们的价格有他们的储�
 
 所以当流动池是空时，我们建立新的流动池可以按照任意比例添加。流动池已经存在，就需要按照流动池中的**存量比例**添加流动性。
 
-
-
 代码如下
 
 当已经存在流动资金时。为了获得应存入`token`的数量，通过计算`tokenReserve / ethReserve`比率再乘以存入`Eth`的数量就可获得。这样就可以保持当前价格。
@@ -282,8 +280,6 @@ if (getReserve() == 0) {
 * 所有交易收到**费用**都会都会按照用户的LP-tokens分配
 
 * LP-tokens可以**换回流动性**和对应的**手续费**
-
-
 
 OK，接下来我们讨论LP-tokens的供应问题。
 
@@ -336,11 +332,9 @@ function addLiquidity(uint256 _tokenAmount)
 } 
 ```
 
-
-
 #### 费用
 
-关于费用的问题。也不需要想得太多，每一笔swap，我们只需要按比例发给交易者，剩下留在池子里的就是交易费用，无论他是`tokenToEth`还是`ethToTokens`都会留下一部分费用在流动性池子里。
+关于费用的问题。也不需要想得太多，每一笔swap，我们只需要按比例发给交易者，剩下留在池子里的就是交易费用，无论他是`tokenToEth`还是`ethToTokens`都会留下一f分费用在流动性池子里。
 
 在uniwap中，每一笔交易都会收取0.3%的手续费，这里我们采用1%方便计算。
 
@@ -395,8 +389,6 @@ function removeLiquidity(uint256 _amount) public returns (uint256, uint256) {
 
 3. 转移`token`和`Eth`
 
-
-
 最后讨论一下无偿损失，这是流动性提供者要面临的问题之一。
 
 1. 比如我们向USDT/ETH 50/50池子里存入1ETH和100USDT，也就是存入了价值100USDT的ETH，总共价值200美元资产。
@@ -406,3 +398,165 @@ function removeLiquidity(uint256 _amount) public returns (uint256, uint256) {
 3. 此时你得到的时（0.5 * 400 + 200）= 400美元，如果你没有提供流动性的话，你资产价值时（1 * 400 + 100）= 500美元，就是说你因为提供了流动性而损失了100美元
 
 [无偿损失]([What is Impermanent Loss? DEFI Explained – Finematics](https://finematics.com/impermanent-loss-explained/))是指由于**流动性池中资产价值的波动或交易费用分配减少而导致的损失**。
+
+### V1 part3
+
+在part1中，说过V1就两个合约，一个是`Exchange`另外一个就是`Factory`，这一part就完成`Factory`合约。
+
+#### 什么是Factory?
+
+工厂合约主要是**生成**和**注册**`Exchange`合约。
+
+可以回想一下`Exchange`合约的功能主要时候实现单个`Eth`和`token`的交易对逻辑。这只是实现了一个交易对的操作。市面上有无数多的交易对，有很多交易对由用户自己创建，大多数的用户都不会写代码，所以我们需要一个`Factory`合约来快速生产各种`Exchange`合约。
+
+另外也可以通过`Factory`合约根据`token`的地址来快速找到对应的`Exchange`合约进行交易。
+
+#### 工厂合约的实现
+
+首先我们要实现工厂的注册--也就是通过`token`地址来找对对应的`Exchange`合约，使用`mapping(address => address)`
+
+```solidity
+contract Factory {
+    mapping(address => address) public tokenToExchange;
+    ...
+```
+
+接着我们实现创建兑换合约`createExchange`
+
+我们需要注意的是，要检测`tokenAddress`不是空地址，且对应的`Exchange`合约不存在才可以创建对应的`Exchange`合约
+
+```solidity
+function createExchange(address _tokenAddress) public returns (address){
+        require(_tokenAddress != address(0), "invalid token address");
+        require(tokenToExchange != address(0), "exchange already exists");
+
+        Exchange exchange = new Exchange(_tokenAddress);
+        tokenToExchange[_tokenAddress] = address(exchange);
+
+        return address(exchange);
+    }
+```
+
+`getExchange` 通过合约地址获取对应`Exchange`合约（OOP封装特性）
+
+```solidity
+function getExchange(address _tokenAddress) public view returns (address) {
+  return tokenToExchange[_tokenAddress];
+}
+```
+
+既然`Factory` 与每个`Exchange`合约都由连接，那么`Exchange`中也要有对应的连接
+
+```solidity
+contract Exchange is ERC20{
+    address tokenAddress;
+    address factoryAddress; // new line
+
+    constructor(address _token) ERC20("MyUniswap-V1", "MUniv1", 0){
+        require(_token != address(0), "invalid token address");
+        tokenAddress = _token;
+        factoryAddress = msg.sender; // new line
+    }
+```
+
+#### Token to Token 交易
+
+如果我们连接两个`Exchange`合约，就可以实现**Token-to-token**交易，步骤如下
+
+1. 使用标准的`tokenToEth`交易。
+
+2. 不再向用户发送`Eth`，而是在用户提供的另一个代币地址找到对应的`Exchange`合约
+
+3. 如果`Exchange`合约存在，把第一步中兑换出来的`Eth`通过该合约中的`ethToTokens`出另一种`tokens`，转账给用户。
+
+4. 最后返回交易结果给用户。
+
+先来写`tokenToTokenSwap`（在`Exchange`合约中）
+
+输入参数和`tokenToEth`类似，多了一个`_tokenAddress`就是我们最终要接收的代币地址，通过`Factory`来找到对他的`Exchange`合约。
+
+```solidity
+function tokenToTokenSwap(
+    uint256 _tokensSold,
+    uint256 _minTokensBought,
+    address _tokenAddress
+) public {
+    ...
+```
+
+首先我们要找出`_tokenAddress`对应的兑换合约，判断他不是本合约且不是零地址
+
+```solidity
+address exchangeAddress = Factory(factoryAddress).getExchange(
+    _tokenAddress
+);
+require(
+    exchangeAddress != address(this) && exchangeAddress != address(0),
+    "invalid exchange address"
+);
+```
+
+接着juiwan大佬写了`Factory`和`Exchange`的接口`IFactory`和`IExchange`（OOP中的特性），这里我就不实现了。因为V1中的代码量和文件比较少，再实现接口反而是麻烦自己。所以就直接通过对应的地址来找到合约。
+
+找到对应的`exchangeAddress`后，计算出需要兑换的代币和兑换出的`Eth`，
+
+再把代币转入合约里
+
+```solidity
+uint256 tokenReserve = getReserve();
+uint256 ethBought = getAmount(
+    _tokensSold,
+    tokenReserve,
+    address(this).balance
+);
+
+ERC20(tokenAddress).transferFrom(
+    msg.sender,
+    address(this),
+    _tokensSold
+);
+```
+
+最后，调用`exchangeAddress`的兑换合约中`ethToTokenSwap`函数，看起来就完成了
+
+```solidity
+Exchange(exchangeAddress).ethToTokenSwap{value: ethBought}(
+    _minTokensBought
+);
+```
+
+其实不然，我们是通过第一个`Exchange`合约调用第二个`Exchange`合约，我们看会到`ethToTokenSwap`中的转账合约。在下面`transfer`中我们的参数是`msg.sender`，这样就会导致在最后一步转账的时候，他会把代币转入第一个`Exchange`合约中，并不会到用户账户。
+
+```solidity
+ERC20(tokenAddress).transfer(msg.sender, tokensBought);
+```
+
+解决方法很简单，我们只用继续拆分`ethToTokenSwap`。`ethToTokenSwap`依然专注与单次的`Eth`换`token`
+
+添加一个`ethToTokenTransfer`函数专门用于代币互转，传入用户的地址。
+
+```solidity
+function ethToToken(uint256 _minTokens, address recipient) private {
+  uint256 tokenReserve = getReserve();
+  uint256 tokensBought = getAmount(
+    msg.value,
+    address(this).balance - msg.value,
+    tokenReserve
+  );
+
+  require(tokensBought >= _minTokens, "insufficient output amount");
+
+  IERC20(tokenAddress).transfer(recipient, tokensBought);
+}
+
+function ethToTokenSwap(uint256 _minTokens) public payable {
+  ethToToken(_minTokens, msg.sender);
+}
+
+function ethToTokenTransfer(uint256 _minTokens, address _recipient)
+  public
+  payable
+{
+  ethToToken(_minTokens, _recipient);
+}
+```

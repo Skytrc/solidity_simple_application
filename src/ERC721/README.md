@@ -63,7 +63,7 @@ ERC165的作用是让合约声明自己支持那些接口。例如，可以通�
 
 #### 1.mint NFT 后转移
 
-![721(1).png](D:\GitHub\solidity_simple_application\res\ERC721\721(1).png)
+![721(1).png](../../res/ERC721/721.1.png)
 
 比如有一个用户，他用到一个临时钱包去mint NFT，接着，他想把自己的NFT转移到一个安全的钱包。这时，他需要`mint()`一个新的NFT，再`transferFrom()`转移到新的钱包。
 
@@ -137,7 +137,7 @@ ERC165的作用是让合约声明自己支持那些接口。例如，可以通�
 
 #### 2. mint后safeTransferFrom
 
-![721(2).png](D:\GitHub\solidity_simple_application\res\ERC721\721(2).png)
+![721(2).png](../../res/ERC721/721.2.png)
 
 假设现在我们mint了一个nft。我们通过授权给第三方，委托他来帮我们售卖NFT，最后在通过`safeTransferFrom()`成功转移给其他钱包。
 
@@ -187,7 +187,7 @@ ERC165的作用是让合约声明自己支持那些接口。例如，可以通�
 
 #### 3.mint后burn掉
 
-![721(3).png](D:\GitHub\solidity_simple_application\res\ERC721\721(3).png)
+![721(3).png](../../res/ERC721/721.3.png)
 
 加入Mint了一个nft后，该nft归零了，但是它在钱包里。看着他很碍眼，我们可以选择把他burn掉（哈哈哈哈）
 
