@@ -122,14 +122,14 @@ contract Exchange is ERC20{
         uint256 _mintTokensBought,
         address _tokenAddress
     ) public {
-        address exchangeAddress = Factory(factoryAddress).getAddress(_tokenAddress);
+        address exchangeAddress = Factory(factoryAddress).getExchange(_tokenAddress);
         require(
             exchangeAddress != address(this) && exchangeAddress != address(0),
             "invalid exchange address"
         );
 
         uint256 tokenReserve = getReserve();
-        uint256 tokensBought = getAmount(
+        uint256 ethBought = getAmount(
             _tokensSold,
             tokenReserve,
             address(this).balance

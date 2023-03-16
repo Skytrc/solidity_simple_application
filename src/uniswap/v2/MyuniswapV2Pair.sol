@@ -28,20 +28,24 @@ contract MyuniswapV2Pair is ERC20, Math {
     event Sync(uint256 reserve0, uint256 reserve1);
 
     constructor(address token0_, address token1_)
-        ERC20(Myuniswap V2", "MyuniV2", 18)
+        ERC20("Myuniswap-V2", "MyuniV2", 18)
     {
         token0 = token0_;
         token1 = token1_;
     }
 
     function mint() public {
+        (uint112 _reserve0, uint112 _reserve1, ) = getReserves();
         uint256 balance0 = IERC20(token0).balanceOf(address(this));
         uint256 balance1 = IERC20(token1).balanceOf(address(this));
+        uint256 amount0 = balance0 - _reserve0;
+        uint256 amount1 = balance1 - _reserve1;
 
         uint256 liquidity;
 
         if(totalSupply == 0) {
             liquidity = Math.sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
+            _mint(address(0), MINIMUM_LIQUIDITY);
         } else {
             liquidity = Math.min(
                 (amount0 * totalSupply) / _reserve0,
@@ -50,12 +54,12 @@ contract MyuniswapV2Pair is ERC20, Math {
         }
 
         if (liquidity <= 0) {
-            revert InsufficientLiquidityMinted;
+            revert InsufficientLiquidityMinted();
         }
 
         _mint(msg.sender, liquidity);
 
-        _update(amount0, amount1);
+        _update(balance0, balance1);
 
         emit Mint(msg.sender, amount0, amount1);
     }
@@ -69,7 +73,7 @@ contract MyuniswapV2Pair is ERC20, Math {
         uint256 amount1 = (liquidity * balance1) / totalSupply;
 
         if (amount0 <= 0 || amount1 <= 0) {
-            revert InsufficientLiquidityBurned;
+            revert InsufficientLiquidityBurned();
         }
 
         _burn(to, liquidity);
@@ -85,9 +89,28 @@ contract MyuniswapV2Pair is ERC20, Math {
         emit Burn(msg.sender, amount0, amount1, to);
     }
 
+    function sync() public {
+        _update(
+            IERC20(token0).balanceOf(address(this)),
+            IERC20(token1).balanceOf(address(this))
+        );
+    }
+
+    function getReserves()
+        public
+        view
+        returns (
+            uint112,
+            uint112,
+            uint32
+        )
+    {
+        return (reserve0, reserve1, 0);
+    }
+
     function _update(uint256 balance0, uint256 balance1) private {
         reserve0 = uint112(balance0);
-        reserve0 = uint112(balance1);
+        reserve1 = uint112(balance1);
 
         emit Sync(reserve0, reserve1);
     }
@@ -98,7 +121,7 @@ contract MyuniswapV2Pair is ERC20, Math {
         uint256 value
     ) private {
         (bool success, bytes memory data) = token
-            .call(abi.encodeWithSignature("transfer(address, uint256)", to, value)
+            .call(abi.encodeWithSignature("transfer(address,uint256)", to, value)
         );
 
         if(!success || data.length != 0 && !abi.decode(data, (bool))) {
