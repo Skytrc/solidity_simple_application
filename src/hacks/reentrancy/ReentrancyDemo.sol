@@ -17,7 +17,7 @@ contract Demo {
 
 }
 
-contract ReEntrancyGuard {
+contract ReentrancyGuard {
     bool internal locked;
 
     modifier noReentrant() {
@@ -28,9 +28,9 @@ contract ReEntrancyGuard {
     }
 }
 
-contract Protect is ReEntrancyGuard{
+contract Guard is ReentrancyGuard{
 
-    mapping (address => uint) public balances;
+    mapping (address => uint256) public balances;
 
     function deposit() public payable {
         balances[msg.sender] += msg.value;
