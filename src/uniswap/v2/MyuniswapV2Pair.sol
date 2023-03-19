@@ -4,6 +4,7 @@ pragma solidity ^0.8.17;
 import "solmate/tokens/ERC20.sol";
 import "./libraries/Math.sol";
 import "./libraries/UQ112x112.sol";
+import "./interface/IMyuniswapV2Pair.sol";
 
 interface IERC20 {
     function balanceOf(address) external returns (uint256);
@@ -18,6 +19,7 @@ error InsufficientOutputAmount();
 error InsufficientLiquidity();
 error InvalidK();
 error TransferFailed();
+error AlreadyInitialized();
 
 contract MyuniswapV2Pair is ERC20, Math {
     using UQ112x112 for uint224;
@@ -52,14 +54,12 @@ contract MyuniswapV2Pair is ERC20, Math {
         token1 = token1_;
     }
 
-    function mint() public {
+    function mint(address to) public returns (uint256 liquidity){
         (uint112 _reserve0, uint112 _reserve1, ) = getReserves();
         uint256 balance0 = IERC20(token0).balanceOf(address(this));
         uint256 balance1 = IERC20(token1).balanceOf(address(this));
         uint256 amount0 = balance0 - _reserve0;
         uint256 amount1 = balance1 - _reserve1;
-
-        uint256 liquidity;
 
         if(totalSupply == 0) {
             liquidity = Math.sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
@@ -77,11 +77,11 @@ contract MyuniswapV2Pair is ERC20, Math {
             revert InsufficientLiquidityMinted();
         }
 
-        _mint(msg.sender, liquidity);
+        _mint(to, liquidity);
 
         _update(balance0, balance1, _reserve0, _reserve1);
 
-        emit Mint(msg.sender, amount0, amount1);
+        emit Mint(to, amount0, amount1);
     }
 
     function burn() public {
@@ -149,6 +149,15 @@ contract MyuniswapV2Pair is ERC20, Math {
 
         emit Swap(msg.sender, amount0Out, amount1Out, to);
 
+    }
+
+    function initialize(address _token0, address _token1) public {
+        if(_token0 != address(0) || _token1 != address(0)) {
+            revert AlreadyInitialized();
+        }
+
+        token0 = _token0;
+        token1 = _token1;
     }
 
     function sync() public {
