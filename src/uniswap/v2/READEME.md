@@ -209,8 +209,6 @@ function swap(
 
 2. 使用`revert`，当发生错误时，回滚交易
 
-
-
 ### 价格预言
 
 预言机的本意是，**连接即连接区块链和链外服务的桥梁**，以便可以从智能合约中查询真实世界的数据。
@@ -230,8 +228,6 @@ $price_1 = \frac{reserve_0}{resever_1}$
 由于Solidity不提供浮点运算，在计算该类价格时运算可以能出现小数，所以我们需要提高精度，Uniswap使用**UQ112.112number**来解决。
 
 **UQ112.112number**指的是一个数字，它的小数部分使用112位（2**112），选择112位是为了使储备状态变量的存储更优化。后面回解释。
-
-
 
 首先我们需要存储上一次更新价格时区块时间
 
@@ -272,8 +268,6 @@ function _update(
 
 这里为什么会用到`unchecked`后面也会解释
 
-
-
 ### 存储优化
 
 为什么会用到`uint112`而不是`uint256`。这就是要从EVM说起。
@@ -283,8 +277,6 @@ function _update(
 如果我们采用`uint256`作为小数位运算，再计算上整数位，占用的插槽就大于等2。
 
 而采用两个`uint112`表示小数部分和整数部分，两个加来为224。能确保两部分无论实在储存还是加载都在一个插槽上，节省了gas。
-
-
 
 ### 整数上溢和下溢
 
@@ -299,8 +291,6 @@ $uint256(0) - 1 = 2^{256} - 1$
 在**solidity 0.8.0**前，是不会检查溢出的问题，所以当时就有了library`SafeMath`。但是安全检查又会消耗很多的gas，而且运算时间变慢。
 
 回到代码中，无论是时间间隔的运算还是累积价格时，溢出的边界都是可知的。所以可以使用`unchecked`
-
-
 
 ### 安全转账
 
@@ -331,3 +321,374 @@ function _saferTransfer(
 ---
 
 最后讲一讲测试用例方面。**juiwen**大佬写了很多测试用例，到了part2测试文件已经到了400多行，因为他要确保每个函数都能稳定运行，会从很多方面去编写测试用例。有兴趣的可以自己去查看，而我认为只要跑通他的用例就算完成，也不需要一行一行的去解读（不排除以后会去做）。
+
+
+
+## V2 part3
+
+`Pair`的基本逻辑已经讲完了，接下来就是`Factory`。工厂合约最重要就是生成和注册`Pair`。
+
+工厂合约比较简单，就是在`createPair`函数的同时，把它注册在`pairs`中
+
+```solidity
+contract MyuniswapV2Factory {
+
+    error IdenticalAddresses();
+    error PairExists();
+    error ZeroAddress();
+
+    event PairCreated(
+        address indexed token0, 
+        address indexed token1,
+        address pair,
+        uint256
+    );
+
+    // tokenA => tokenB => pair地址 同时也存在 tokenB => tokenA => pair地址
+    mapping(address => mapping(address => address)) public pairs;
+    // 储存所有的piar地址
+    address[] public allPairs;
+
+```
+
+接下来看`createPair`如何创建`pair`。我们先讲讲`create2`前的操作
+
+1. 函数不会检查用户传来的token address是否正确
+
+2. 根据两个token进行排序，避免创建不同的`pair`
+
+3. 接下来就是使用`create2`创建`Pair`合约
+
+```solidity
+function createPair(
+        address tokenA, 
+        address tokenB
+    ) public returns (address pair) {
+        if (tokenA == tokenB) {
+            revert IdenticalAddresses();
+        }
+
+        (address token0, address token1) = tokenA < tokenB 
+        ? (tokenA, tokenB) 
+        : (tokenB, tokenA);
+
+        if(token0 == address(0)) {
+            revert ZeroAddress();
+        }
+
+        if(pairs[token0][token1] != address(0)) {
+            revert PairExists();
+        }
+
+        bytes memory bytecode = type(MyuniswapV2Pair).creationCode;
+        bytes32 salt = keccak256(abi.encodePacked(token0, token1));
+        assembly {
+            pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
+        }
+        
+        IMyuniswapV2Pair(pair).initialize(token0, token1);
+
+        pairs[token0][token1] = pair;
+        pairs[token1][token0] = pair;
+        allPairs.push(pair);
+
+        emit PairCreated(token0, token1, pair, allPairs.length);
+    }
+```
+
+
+
+`create`：使用`create`时，新合约的地址是由工厂nonce确定的，且无法控制。
+
+`create2`：在**EIP-1014**中添加，地址是通过部署的**合约字节码**和`salt`来决定，`salt`是给定的value。
+
+接下来看代码
+
+```solidity
+bytes memory bytecode = type(MyuniswapV2Pair).creationCode;
+bytes32 salt = keccak256(abi.encodePacked(token0, token1));
+assembly {
+    pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
+}
+```
+
+1. 我们获取`Pair`的字节码
+
+2. 通过对tokenA和tokenB的编码打包计算出`salt`
+
+3. 通过字节码和`salt`创建`pair`地址
+
+获得`pair`地址后，我们再初始化`Pair`里的token地址
+
+```solidity
+// MyuniswapV2Pair里的函数
+function initialize(address token0_, address token1_) public {
+  if (token0 != address(0) || token1 != address(0))
+    revert AlreadyInitialized();
+
+  token0 = token0_;
+  token1 = token1_;
+}
+```
+
+完成初始化后
+
+1. 把`pair`地址注册到`pairs`里
+
+2. `emit PairCreated`事件
+
+
+
+### 路由合约
+
+完成工厂合约以后，接着就是路由合约。`Router`合约是用户的入口点，面对着大多数的用户。`Pair`是低级，对token的操作，`Router`是计算各种数据并且调用`Pair`来处交易。
+
+另外，我们还要实现`Library`，`Library`里面有着基础且重要的函数，包括交易和计算。
+
+首先我们要在构造器中关联`Factory`合约，以便后面的创建`Pair`
+
+```solidity
+contract MyuniswapV2Router {
+
+    error InsufficientAAmount();
+    error InsufficientBAmount();
+    error SafeTransferFailed();
+
+    IMyuniswapV2Factory factory;
+
+    constructor (address factoryAddress) {
+        factory = IMyuniswapV2Factory(factoryAddress);
+    }
+```
+
+
+
+在part1中，我们是从`mint`LP-token中写起，在`Router`中我们也从`addLiquidity`写起
+
+先从参数看起
+
+* `tokenA`和`tokenB`是用于找到对应的`Pair`合约或创建对应的`Pair`
+
+* `amountADesired`和`amountBDesired`用户想要添加到流动性池子（`Pair`）的两种token数量
+
+* `amountAMin` 和 `amountBMin`token最小存入数量，因为添加LP要根据比例同时添加两种代币。设置最小的数量，就可以控制获得LP-token的下限数量
+
+* `to`LP-token接收地址
+
+```solidity
+function addLiquidity(
+    address tokenA,
+    address tokenB,
+    uint256 amountADesired,
+    uint256 amountBDesired,
+    uint256 amountAMin,
+    uint256 amountBMin,
+    address to
+)
+    public
+    returns (
+        uint256 amountA,
+        uint256 amountB,
+        uint256 liquidity
+    )
+    ...
+```
+
+首先我们需要计算出获得的LP-token所需要的两种token数量。计算函数放在后面讲，前面先讲整体。
+
+```solidity
+(amountA, amountB) = _calculateLiquidity(
+            tokenA,
+            tokenB,
+            amountADesired,
+            amountBDesired,
+            amountAMin,
+            amountBMin
+        );
+```
+
+1. 根据两个token `address`找到对应的`Pair`合约
+
+2. 向`Pair`安全转账tokens
+
+3. 调用`Pair.mint` mint出LP-token。 
+
+```solidity
+address pairAddress = MyuniswapV2Library.pairFor(
+            address(factory),
+            tokenA,
+            tokenB
+        );
+    
+_saferTransfer(tokenA, msg.sender, pairAddress, amountA);
+_saferTransfer(tokenB, msg.sender, pairAddress, amountB);
+liquidity = IMyuniswapV2Pair(pairAddress).mint(to);
+```
+
+#### _calculateLiquidity
+
+因为在用户选择流动到处理完整个交易会**存在延迟**，所以实际的储备率会变化，导致**损失**一些LP-token，通过选择**所需**的和**最小**的金额，我们可以将这种损失降到最低。（如果对这有点模糊的可以看会V1中对计算流动性公式的描述）
+
+现在我们来看看是如何计算流动性。首先，我们调用`Library`的`getReserves`获取两种代币存量
+
+```solidity
+function _calculateLiquidity(
+    address tokenA,
+    address tokenB,
+    uint256 amountADesired,
+    uint256 amountBDesired,
+    uint256 amountAMin,
+    uint256 amountBMin
+) internal returns (uint256 amountA, uint256 amountB) {
+    (uint256 reserveA, uint256 reserveB) = ZuniswapV2Library.getReserves(
+        address(factory),
+        tokenA,
+        tokenB
+    );
+
+    ...
+```
+
+如果是新的流动池，就不需要计算准备金比例，直接存入所有的token数量
+
+```solidity
+...
+if (reserveA == 0 && reserveB == 0) {
+    (amountA, amountB) = (amountADesired, amountBDesired);
+...
+```
+
+不是新的流动性池子，我们要分别计算两种token的最优方案。
+
+计算B的**最优金额**，通过`Library.quote()`计算。如果B的**最优数额小于用户想存入B的数量**，同时确保算出来最优数量要**大于**用户设置的存入tokenB**最小数额**，修改存入B的数量`amountB = amountBOtimal`（`quote`用于计算交换价格，后面会讲到）
+
+```solidity
+...
+} else {
+    uint256 amountBOptimal = ZuniswapV2Library.quote(
+        amountADesired,
+        reserveA,
+        reserveB
+    );
+    if (amountBOptimal <= amountBDesired) {
+        if (amountBOptimal <= amountBMin) revert InsufficientBAmount();
+        (amountA, amountB) = (amountADesired, amountBOptimal);
+...
+```
+
+如果B的最优数量大于用户想存入B的数量，我们需要看看A最优价格。
+
+```solidity
+...
+} else {
+    uint256 amountAOptimal = ZuniswapV2Library.quote(
+        amountBDesired,
+        reserveB,
+        reserveA
+    );
+    assert(amountAOptimal <= amountADesired);
+
+    if (amountAOptimal <= amountAMin) revert InsufficientAAmount();
+    (amountA, amountB) = (amountAOptimal, amountBDesired);
+}
+```
+
+与上面类似，计算**A最优价格**，对比用户向存入数量，如果**小于**再确保不会少过用户想存入A的**最小数量**，再更新`amountA = amountAOptimal`
+
+### 
+
+### Library
+
+`Library`合约是一个无状态合约，它的函数主要目的是函数通过 `delegatecall` 在调用者的状态下执行。
+
+在上面`addLiquidity`中，我们用到了`getReserves`、`quote`接下来讲解一下。
+
+#### getReserves
+
+1. 调用`sortToken`先排序token address
+
+2. 通过`pairFor`来计算出pair address
+
+3. 通过pair address获得对应`Pair`合约
+
+4. 调用`pair.getReserves`获取token的对应数量
+
+```solidity
+function getReserves(
+        address factoryAddress,
+        address tokenA,
+        address tokenB
+    ) public returns (uint256 reserveA, uint256 reserveB) {
+        (address token0, address token1) = sortTokens(tokenA, tokenB);
+        (uint256 reserve0, uint256 reserve1, ) = IMyuniswapV2Pair(
+            pairFor(factoryAddress, token0, token1)
+        ).getReserves();
+        (reserveA, reserveB) = tokenA == token0 
+            ? (reserve0, reserve1) 
+            : (reserve1, reserve0);
+    }
+```
+
+#### sortTokens
+
+与`Factory.createPair()`一样，给地址排序，确保只出一个`Pair`合约
+
+```solidity
+function sortTokens(address tokenA, address tokenB) 
+    internal
+    pure
+    returns (address token0, address token1) {
+        return tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
+}
+```
+
+#### pairFor
+
+其实获取`Pair`的地址非常简单，我们可以通过`Factory`的`pair`，分别输入两个token的地址就可以获得。但是需要外部调用，需要更贵的花费。
+
+当初`Pair`的地址是通过对`create2`中，对`Factory`地址、两个token地址以及`Pair`的字节码，通过一定的计算完成的，所以我们可以逆向，通过这四个参数构建一个字节序列来获得`Pair`地址。
+
+其中的参数
+
+1. **0xff** 固定常量，防止与`create`操作码冲突
+
+2. `factoryAddress`工厂合约地址
+
+3. 两个token地址的keccak编码
+
+4. `Pair`的字节码的keccak编码
+
+```solidity
+(address token0, address token1) = sortTokens(tokenA, tokenB);
+pairAddress = address(
+    uint160(
+        uint256(
+            keccak256(
+                abi.encodePacked(
+                    hex"ff",
+                    factoryAddress,
+                    keccak256(abi.encodePacked(token0, token1)),
+                    keccak256(type(MyuniswapV2Pair).creationCode)
+                )
+            )
+        )
+    )
+);
+```
+
+#### quote
+
+`quote`函数主要是用于利用乘积恒定公式（V1有讲解），计算出所要兑换token的价格。里面计算非常的简单，没有算上费用。所以智能用来计算流动性计算。
+
+```solidity
+function quote(
+  uint256 amountIn,
+  uint256 reserveIn,
+  uint256 reserveOut
+) public pure returns (uint256 amountOut) {
+  if (amountIn == 0) revert InsufficientAmount();
+  if (reserveIn == 0 || reserveOut == 0) revert InsufficientLiquidity();
+
+  return (amountIn * reserveOut) / reserveIn;
+}
+```
