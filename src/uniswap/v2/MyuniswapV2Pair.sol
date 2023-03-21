@@ -5,6 +5,7 @@ import "solmate/tokens/ERC20.sol";
 import "./libraries/Math.sol";
 import "./libraries/UQ112x112.sol";
 import "./interface/IMyuniswapV2Pair.sol";
+import "./interface/IMyuniswapV2Callee";
 
 interface IERC20 {
     function balanceOf(address) external returns (uint256);
@@ -20,6 +21,7 @@ error InsufficientLiquidity();
 error InvalidK();
 error TransferFailed();
 error AlreadyInitialized();
+error InsufficientInputAmount();
 
 contract MyuniswapV2Pair is ERC20, Math {
     using UQ112x112 for uint224;
@@ -115,7 +117,8 @@ contract MyuniswapV2Pair is ERC20, Math {
     function swap(
         uint256 amount0Out, 
         uint256 amount1Out,
-        address to
+        address to,
+        bytes calldata data
     ) public {
         // 判断输入的数量不等于0
         if(amount0Out == 0 && amount1Out == 0) {
@@ -128,24 +131,47 @@ contract MyuniswapV2Pair is ERC20, Math {
             revert InsufficientLiquidity();
         }
 
-        uint256 balance0 = IERC20(token0).balanceOf(address(this)) - amount0Out;
-        uint256 balance1 = IERC20(token1).balanceOf(address(this)) - amount1Out;
-
-        // 保证互换后准备金的乘积必须等于或大于互换前的乘积
-        if(balance0 * balance1 < uint256(reserve0_) * uint256(reserve1_)) {
-            revert InvalidK();
-        }
-
-        // 更新存量
-        _update(balance0, balance1, reserve0_, reserve1_);
-
-        // 代币转账操作
         if(amount0Out > 0) {
             _saferTransfer(token0, to, amount0Out);
         }
         if(amount1Out > 0) {
             _saferTransfer(token1, to, amount1Out);
         }
+        if(data.length > 0) {
+            IMyuniswapV2Callee(to).myuniswapV2call(
+                msg.sender,
+                amount0Out,
+                amount1Out,
+                data
+            )
+        }
+
+        uint256 balance0 = IERC20(token0).balanceOf(address(this));
+        uint256 balance1 = IERC20(token1).balanceOf(address(this));
+
+        uint256 amount0 = balance0 > reserve0 - amount0 
+            ? balance0 - (reserve0 - amount0Out) 
+            : 0;
+        uint256 amount1 = balance1 > reserve1 - amount1 
+            ? balance1 - (reserve1 - amount1Out) 
+            : 0;
+
+        if(amount0In == 0 && amount1In == 0) {
+            revert InsufficientInputAmount();
+        }
+
+        uint256 balance0Adjusted = (balance0 * 1000) - (amount0In * 3);
+        uint256 balance1Adjusted = (balance1 * 1000) - (amount1In * 3);
+
+        if (
+            balance0Adjusted * balance1Adjusted <
+            uint256(reserve0_) * uint256(reserve1_) * (1000**2)
+        ) {
+            revert InvalidK();
+        }
+
+        // 更新存量
+        _update(balance0, balance1, reserve0_, reserve1_);
 
         emit Swap(msg.sender, amount0Out, amount1Out, to);
 

@@ -18,7 +18,9 @@ contract MyuniswapV2Factory {
         uint256
     );
 
+    // tokenA => tokenB => pair地址 同时也存在 tokenB => tokenA => pair地址
     mapping(address => mapping(address => address)) public pairs;
+    // 储存所有的piar地址
     address[] public allPairs;
 
     function createPair(

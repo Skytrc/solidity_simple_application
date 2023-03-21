@@ -9,7 +9,9 @@ contract MyuniswapV2Router {
 
     error InsufficientAAmount();
     error InsufficientBAmount();
+    error InsufficientOutputAmount();
     error SafeTransferFailed();
+    error ExcessiveInputAmount();
 
     IMyuniswapV2Factory factory;
 
@@ -45,11 +47,87 @@ contract MyuniswapV2Router {
             tokenB
         );
     
-        _saferTransfer(tokenA, msg.sender, pairAddress, amountA);
-        _saferTransfer(tokenB, msg.sender, pairAddress, amountB);
+        _saferTransferFrom(tokenA, msg.sender, pairAddress, amountA);
+        _saferTransferFrom(tokenB, msg.sender, pairAddress, amountB);
         liquidity = IMyuniswapV2Pair(pairAddress).mint(to);
     
     }
+
+    function removeLiquidity(
+        address tokenA,
+        address tokenB,
+        uint256 liquidity,
+        uint256 amountAMin,
+        uint256 amountBMin,
+        address to,
+    ) public returns (uint256 amountA, uint256 amountB) {
+        address pair = MyuniswapV2Library.pairFor(
+            address(factory),
+            tokenA,
+            tokenB
+        );
+
+        IMyuniswapV2Pair.transferFrom(msg.sender, pair, liquidity);
+        (amountA, amountB) = IMyuniswapV2Pair(pair).burn(to);
+
+        if (amountA < amountAMin) {
+            revert InsufficientAAmount();
+        }
+
+        if (amountB < amountBMin) {
+            revert InsufficientBAmount();
+        }
+    }
+
+    function swapExactTokensForTokens(
+        uint256 amountIn,
+        uint256 amountOutMin,
+        address[] calldata path,
+        address to
+    )   public returns (uint256[] memory amounts) {
+        amounts = MyuniswapV2Library.getAmountOut(
+            address(factory),
+            amountIn,
+            path
+        );
+
+        if(amounts[amounts.length - 1] < amountOutMin) {
+            revert InsufficientOutputAmount();
+        }
+        _saferTransferFrom(
+            path[0],
+            msg.sender,
+            MyuniswapV2Library.pairFor(address(factory), path[0], path[1]),
+            amounts[0]
+        );
+
+        _swap(amounts, path, to);
+    }
+
+    function swapTokenForExactTokens(
+        uint256 amountOut,
+        uint256 amountInMax,
+        address[] calldata path,
+        address to
+    ) public returns (uint256[] memory amounts) {
+        amounts = MyuniswapV2Library.getAmountIn(
+            address(factory),
+            amountOut,
+            path
+        );
+
+        if(amounts[amounts.length - 1] > amountInMax) {
+            revert ExcessiveInputAmount();
+        }
+        _saferTransferFrom(
+            path[0],
+            msg.sender,
+            MyuniswapV2Library.pairFor(address(factory), path[0], path[1]),
+            amounts[0]
+        );
+        _swap(amounts, path, to);
+    }
+
     
     function _calculateLiquidity(
         address tokenA,
@@ -95,7 +173,33 @@ contract MyuniswapV2Router {
     
     }
 
-    function _saferTransfer(
+    function _swap(
+        uint256[] memory amounts,
+        address[] calldata path,
+        address to_
+    ) internal {
+        for(uint256 i; i < path.length - 1; i++) {
+            (address input, address output) = (path[i], path[i + 1]);
+            (address token0, ) = MyuniswapV2Library.sortTokens(input, output);
+            
+            uint256 amountOut = amounts[i + 1];
+            (uint256 amount0Out, uint256 amount1Out) = input == token0
+                ? (uint256(0), amountOut)
+                : (amountOut, uint256(0));
+            
+            address to = i < path.length - 2 
+                ? MyuniswapV2Library.pairFor(
+                    address(factory), 
+                    output, 
+                    path[i + 2]) 
+                : to_;
+            
+            IMyuniswapV2Pair(MyuniswapV2Library.pairFor(address(factory), input, output))
+                .swap(amount0Out, amount1Out, to, "");
+        }
+    }
+
+    function _saferTransferFrom(
         address token,
         address from,
         address to,
