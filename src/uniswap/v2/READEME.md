@@ -692,3 +692,5 @@ function quote(
   return (amountIn * reserveOut) / reserveIn;
 }
 ```
+
+## Uniswap v2 part4
