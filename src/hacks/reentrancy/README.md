@@ -78,7 +78,7 @@ contract ReEntrancyGuard {
         locked = true;
         _;
         locked = false;
-  
+
     }
 }
 
@@ -103,4 +103,3 @@ contract Protect is ReEntrancyGuard{
 
 [测试案例（没有防重入）](../../../test/hacks/reentrancy/Reentrancy.t.sol)
 [测试案例（防重入）](../../../test/hacks/reentrancy/Guard.t.sol)
-

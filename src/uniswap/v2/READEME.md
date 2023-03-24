@@ -207,8 +207,6 @@ function swap(
 
 1. 在所以状态变量更新后，调用`call`函数完成转账
 
-2. 使用`revert`，当发生错误时，回滚交易
-
 ### 价格预言
 
 预言机的本意是，**连接即连接区块链和链外服务的桥梁**，以便可以从智能合约中查询真实世界的数据。
@@ -322,8 +320,6 @@ function _saferTransfer(
 
 最后讲一讲测试用例方面。**juiwen**大佬写了很多测试用例，到了part2测试文件已经到了400多行，因为他要确保每个函数都能稳定运行，会从很多方面去编写测试用例。有兴趣的可以自己去查看，而我认为只要跑通他的用例就算完成，也不需要一行一行的去解读（不排除以后会去做）。
 
-
-
 ## V2 part3
 
 `Pair`的基本逻辑已经讲完了，接下来就是`Factory`。工厂合约最重要就是生成和注册`Pair`。
@@ -348,7 +344,6 @@ contract MyuniswapV2Factory {
     mapping(address => mapping(address => address)) public pairs;
     // 储存所有的piar地址
     address[] public allPairs;
-
 ```
 
 接下来看`createPair`如何创建`pair`。我们先讲讲`create2`前的操作
@@ -385,7 +380,7 @@ function createPair(
         assembly {
             pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
         }
-        
+
         IMyuniswapV2Pair(pair).initialize(token0, token1);
 
         pairs[token0][token1] = pair;
@@ -395,8 +390,6 @@ function createPair(
         emit PairCreated(token0, token1, pair, allPairs.length);
     }
 ```
-
-
 
 `create`：使用`create`时，新合约的地址是由工厂nonce确定的，且无法控制。
 
@@ -437,8 +430,6 @@ function initialize(address token0_, address token1_) public {
 
 2. `emit PairCreated`事件
 
-
-
 ### 路由合约
 
 完成工厂合约以后，接着就是路由合约。`Router`合约是用户的入口点，面对着大多数的用户。`Pair`是低级，对token的操作，`Router`是计算各种数据并且调用`Pair`来处交易。
@@ -460,8 +451,6 @@ contract MyuniswapV2Router {
         factory = IMyuniswapV2Factory(factoryAddress);
     }
 ```
-
-
 
 在part1中，我们是从`mint`LP-token中写起，在`Router`中我们也从`addLiquidity`写起
 
@@ -519,7 +508,7 @@ address pairAddress = MyuniswapV2Library.pairFor(
             tokenA,
             tokenB
         );
-    
+
 _saferTransfer(tokenA, msg.sender, pairAddress, amountA);
 _saferTransfer(tokenB, msg.sender, pairAddress, amountB);
 liquidity = IMyuniswapV2Pair(pairAddress).mint(to);
@@ -694,3 +683,9 @@ function quote(
 ```
 
 ## Uniswap v2 part4
+
+### burn bug
+
+关于`burn`bug我在第一章讲到，所以这里就不重复了
+
+### 移除流动性
