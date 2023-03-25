@@ -221,7 +221,7 @@ contract PairTest is Test {
         pair.mint(address(this));
 
         token0.transfer(address(pair), 0.1 ether);
-        pair.swap(0, 0.18 ether, address(this));
+        pair.swap(0, 0.18 ether, address(this), "");
 
         assertEq(
             token0.balanceOf(address(this)),
@@ -242,7 +242,7 @@ contract PairTest is Test {
         pair.mint(address(this));
 
         token1.transfer(address(pair), 0.2 ether);
-        pair.swap(0.09 ether, 0, address(this));
+        pair.swap(0.09 ether, 0, address(this), "");
 
         assertEq(
             token0.balanceOf(address(this)),
@@ -264,7 +264,7 @@ contract PairTest is Test {
 
         token0.transfer(address(pair), 0.1 ether);
         token1.transfer(address(pair), 0.2 ether);
-        pair.swap(0.09 ether, 0.18 ether, address(this));
+        pair.swap(0.09 ether, 0.18 ether, address(this), "");
 
         assertEq(
             token0.balanceOf(address(this)),
@@ -285,7 +285,7 @@ contract PairTest is Test {
         pair.mint(address(this));
 
         vm.expectRevert(bytes(hex"42301c23")); // InsufficientOutputAmount
-        pair.swap(0, 0, address(this));
+        pair.swap(0, 0, address(this), "");
     }
 
     function testSwapInsufficientLiquidity() public {
@@ -294,10 +294,10 @@ contract PairTest is Test {
         pair.mint(address(this));
 
         vm.expectRevert(bytes(hex"bb55fd27")); // InsufficientLiquidity
-        pair.swap(0, 2.1 ether, address(this));
+        pair.swap(0, 2.1 ether, address(this), "");
 
         vm.expectRevert(bytes(hex"bb55fd27")); // InsufficientLiquidity
-        pair.swap(1.1 ether, 0, address(this));
+        pair.swap(1.1 ether, 0, address(this), "");
     }
 
     function testSwapUnderpriced() public {
@@ -306,7 +306,7 @@ contract PairTest is Test {
         pair.mint(address(this));
 
         token0.transfer(address(pair), 0.1 ether);
-        pair.swap(0, 0.09 ether, address(this));
+        pair.swap(0, 0.09 ether, address(this), "");
 
         assertEq(
             token0.balanceOf(address(this)),
@@ -329,7 +329,7 @@ contract PairTest is Test {
         token0.transfer(address(pair), 0.1 ether);
 
         vm.expectRevert(bytes(hex"bd8bc364")); // InsufficientLiquidity
-        pair.swap(0, 0.36 ether, address(this));
+        pair.swap(0, 0.36 ether, address(this), "");
 
         assertEq(
             token0.balanceOf(address(this)),

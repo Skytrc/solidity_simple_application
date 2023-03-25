@@ -5,7 +5,7 @@ import "solmate/tokens/ERC20.sol";
 import "./libraries/Math.sol";
 import "./libraries/UQ112x112.sol";
 import "./interface/IMyuniswapV2Pair.sol";
-import "./interface/IMyuniswapV2Callee";
+import "./interface/IMyuniswapV2Callee.sol";
 
 interface IERC20 {
     function balanceOf(address) external returns (uint256);
@@ -143,16 +143,16 @@ contract MyuniswapV2Pair is ERC20, Math {
                 amount0Out,
                 amount1Out,
                 data
-            )
+            );
         }
 
         uint256 balance0 = IERC20(token0).balanceOf(address(this));
         uint256 balance1 = IERC20(token1).balanceOf(address(this));
 
-        uint256 amount0 = balance0 > reserve0 - amount0 
+        uint256 amount0In = balance0 > reserve0 - amount0Out 
             ? balance0 - (reserve0 - amount0Out) 
             : 0;
-        uint256 amount1 = balance1 > reserve1 - amount1 
+        uint256 amount1In = balance1 > reserve1 - amount1Out 
             ? balance1 - (reserve1 - amount1Out) 
             : 0;
 

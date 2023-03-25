@@ -9,7 +9,6 @@ contract MyuniswapV2Router {
 
     error InsufficientAAmount();
     error InsufficientBAmount();
-    error InsufficientOutputAmount();
     error SafeTransferFailed();
     error ExcessiveInputAmount();
 
@@ -59,7 +58,7 @@ contract MyuniswapV2Router {
         uint256 liquidity,
         uint256 amountAMin,
         uint256 amountBMin,
-        address to,
+        address to
     ) public returns (uint256 amountA, uint256 amountB) {
         address pair = MyuniswapV2Library.pairFor(
             address(factory),
@@ -67,7 +66,7 @@ contract MyuniswapV2Router {
             tokenB
         );
 
-        IMyuniswapV2Pair.transferFrom(msg.sender, pair, liquidity);
+        IMyuniswapV2Pair(pair).transferFrom(msg.sender, pair, liquidity);
         (amountA, amountB) = IMyuniswapV2Pair(pair).burn(to);
 
         if (amountA < amountAMin) {
@@ -85,7 +84,7 @@ contract MyuniswapV2Router {
         address[] calldata path,
         address to
     )   public returns (uint256[] memory amounts) {
-        amounts = MyuniswapV2Library.getAmountOut(
+        amounts = MyuniswapV2Library.getAmountsOut(
             address(factory),
             amountIn,
             path
@@ -110,7 +109,7 @@ contract MyuniswapV2Router {
         address[] calldata path,
         address to
     ) public returns (uint256[] memory amounts) {
-        amounts = MyuniswapV2Library.getAmountIn(
+        amounts = MyuniswapV2Library.getAmountsIn(
             address(factory),
             amountOut,
             path
