@@ -39,6 +39,8 @@ contract MyuniswapV2Pair is ERC20, Math {
     uint256 public price0CumulativeLast;
     uint256 public price1CumulativeLast;
 
+    bool private isEntered;
+
     event Burn(address indexed sender, uint256 amount0, uint256 amount1);
     event Mint(address indexed sender, uint256 amount0, uint256 amount1);
     event Sync(uint256 reserve0, uint256 reserve1);
@@ -119,7 +121,7 @@ contract MyuniswapV2Pair is ERC20, Math {
         uint256 amount1Out,
         address to,
         bytes calldata data
-    ) public {
+    ) public nonReentrant {
         // 判断输入的数量不等于0
         if(amount0Out == 0 && amount1Out == 0) {
             revert InsufficientOutputAmount();
@@ -207,6 +209,15 @@ contract MyuniswapV2Pair is ERC20, Math {
         )
     {
         return (reserve0, reserve1, blockTimestampLast);
+    }
+
+    modifier nonReentrant() {
+        require(!isEntered);
+        isEntered = true;
+  
+        _;
+  
+        isEntered = false;
     }
 
     function _update(
