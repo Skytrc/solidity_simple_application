@@ -500,7 +500,7 @@ function addLiquidity(
 
 2. 向`Pair`安全转账tokens
 
-3. 调用`Pair.mint` mint出LP-token。 
+3. 调用`Pair.mint` mint出LP-token。
 
 ```solidity
 address pairAddress = MyuniswapV2Library.pairFor(
@@ -584,8 +584,6 @@ if (reserveA == 0 && reserveB == 0) {
 
 与上面类似，计算**A最优价格**，对比用户向存入数量，如果**小于**再确保不会少过用户想存入A的**最小数量**，再更新`amountA = amountAOptimal`
 
-### 
-
 ### Library
 
 `Library`合约是一个无状态合约，它的函数主要目的是函数通过 `delegatecall` 在调用者的状态下执行。
@@ -667,7 +665,7 @@ pairAddress = address(
 
 #### quote
 
-`quote`函数主要是用于利用乘积恒定公式（V1有讲解），计算出所要兑换token的价格。里面计算非常的简单，没有算上费用。所以智能用来计算流动性计算。
+`quote`函数主要是用于利用乘积恒定公式（V1有讲解），计算出所要兑换token的价格。里面计算非常的简单，没有算上费用。所以只能用来计算流动性计算。
 
 ```solidity
 function quote(
@@ -689,3 +687,376 @@ function quote(
 关于`burn`bug我在第一章讲到，所以这里就不重复了
 
 ### 移除流动性
+
+与添加流动性类似。
+
+1. 根据用户的LP-token计算出对应两个`token`的数量，并且转移
+
+2. 销毁用户的LP-tokens
+
+参数详情
+
+* `tokenA`、`tokenB`对应的两种代币地址
+
+* `liquidity`LP-tokens的数量
+
+* `amountAMin`和`amountBMin`分别是移除流动性后用户所能接收的最小代币数量
+
+* `to`代币接收地址
+
+```solidity
+function removeLiquidity(
+        address tokenA,
+        address tokenB,
+        uint256 liquidity,
+        uint256 amountAMin,
+        uint256 amountBMin,
+        address to,
+    ) public returns (uint256 amountA, uint256 amountB) {
+        ...
+```
+
+获取对应的`Pair`地址
+
+```solidity
+address pair = MyuniswapV2Library.pairFor(
+            address(factory),
+            tokenA,
+            tokenB
+        );
+```
+
+转账代币和销毁LP-tokens
+
+```solidity
+IMyuniswapV2Pair.transferFrom(msg.sender, pair, liquidity);
+(amountA, amountB) = IMyuniswapV2Pair(pair).burn(to);
+```
+
+最后再对比获得的代币数量是否小于用户所接受的下限
+
+```solidity
+if (amountA < amountAMin) revert InsufficientAAmount();
+if (amountB < amountBMin) revert InsufficientBAmount();
+```
+
+### 数量与价格计算
+
+在`Library`的`quote`中，我们只是简单的考虑了某一瞬间的数量。当我们要兑换的时候，储备数量也会变化，所以价格也应该随着代币数量的变化而变化
+
+$x * y = k$
+
+`x`和`y`分别代两种代币的储存量
+
+当我们交换时要考虑到数量的变化
+
+$(x+r\Delta x)(y - \Delta y) = xy$
+
+需要用到$\Delta x$去兑换$\Delta y$，变换一下可得
+
+$\Delta y = \frac{yr\Delta x}{x+r\Delta x}$
+
+最后还需要考虑到手续费
+
+`amountIn`就是$\Delta x$，`reserveIn`就是$x$，`reserveOut`就是y
+
+```solidity
+function getAmountOut(
+        uint256 amountIn,
+        uint256 reserveIn,
+        uint256 reserveOut
+    ) public pure returns (uint256) {
+        if(amountIn == 0) {
+            revert InsufficientAmount();
+        }
+        if(reserveIn == 0 || reserveOut == 0) {
+            revert InsufficientLiquidity();
+        }
+```
+
+与V1计算流动性类似，因为uniswap收取0.3%的手续费，且没有浮点运算，所以我们需要*1000，最后根据公式写出
+
+```solidity
+    uint256 amountInWithFee = amountIn * 997;
+    uint256 numerator = amountInWithFee * reserveOut;
+    uint256 denominator = (reserveIn * 1000) + amountInWithFee;
+
+    return numerator / denominator;
+```
+
+### swapExactTokensForTokens
+
+`Router`中有很多方式去兑换tokens，最常见的就是根据给定的代币，经过计算去换取另一种代币
+
+* `amountIn`给出被交换代币数量
+
+* `amountOutMin`用户可接受最小交换代币数量
+
+* `path`一系列的token地址
+
+* `to`接收地址
+
+`path`的作用就是记录代币地址，比如
+
+如果你想把token A -> token B，那么`path`就记录A和B的地址
+
+如果你想把tokenA -> tokenB -> tokenC，A途径B再转换成C，那么`path`就记录ABC三个地址
+
+```solidity
+function swapExactTokensForTokens(
+    uint256 amountIn,
+    uint256 amountOutMin,
+    address[] calldata path,
+    address to
+) public returns (uint256[] memory amounts) {
+  ...
+```
+
+`getAmountsIn`和`getAmountIn`很类似，两种的区别在于`getAmountsIn`需要处理`path`
+
+的数据，也就是需要处理多个兑换路径。可以简单的理解为`getAmountIn`的循环版。详情代码可以看`Library`里的实现
+
+```solidity
+amounts = MyuniswapV2Library.getAmountOut(
+            address(factory),
+            amountIn,
+            path
+        );
+```
+
+确保兑换的代币不小于用户所接受的下限
+
+```solidity
+if (amounts[amounts.length - 1] < amountOutMin)
+    revert InsufficientOutputAmount();
+```
+
+转移代币并执行swap操作
+
+```solidity
+_safeTransferFrom(
+    path[0],
+    msg.sender,
+    ZuniswapV2Library.pairFor(address(factory), path[0], path[1]),
+    amounts[0]
+);
+_swap(amounts, path, to);
+```
+
+我们看一下`_swap`的执行步骤。总结就是根据给出的路径和代币数量来完成代币的交换。
+
+```solidity
+function _swap(
+    uint256[] memory amounts,
+    address[] memory path,
+    address to_
+) internal {
+    for (uint256 i; i < path.length - 1; i++) {
+      ...
+```
+
+排序以获取正确的`Pair`地址
+
+```solidity
+(address input, address output) = (path[i], path[i + 1]);
+(address token0, ) = MyuniswapV2Library.sortTokens(input, output);
+```
+
+纠正排序后的代币地址对应的数量
+
+```solidity
+uint256 amountOut = amounts[i + 1];
+(uint256 amount0Out, uint256 amount1Out) = input == token0
+    ? (uint256(0), amountOut)
+    : (amountOut, uint256(0));
+```
+
+1. 如果该次交易不是最后一次交易，则把`token`发到对应的`Pair`合约中
+
+2. 如果是最后一次交易，则把代币发到`to`地址中
+
+```solidity
+address to = i < path.length - 2 
+    ? MyuniswapV2Library.pairFor(
+        address(factory), 
+        output, 
+        path[i + 2]) 
+    : to_;
+
+
+IMyuniswapV2Pair(MyuniswapV2Library.pairFor(address(factory), input, output))
+                .swap(amount0Out, amount1Out, to, "");
+```
+
+### swapTokensForExactTokens
+
+V2版本中有很多兑换方式，这里就讲其中一种，其他大体框架上大差不差。
+
+这次的函数是确切的知道输出多少代币，给出一个大致代币输入数量
+
+回到之前的公式
+
+$(x+r\Delta x)(y - \Delta y) = xy$
+
+之前我们是要求$\Delta y$，根据给出确切的$\Delta x$。这次我们要反过来，所以得到的公式是
+
+$\Delta x = \frac{x\Delta y}{(y - \Delta y)r}$
+
+实现公式，最后结果为什么要+1？因为整数除法会向下取整。
+
+```solidity
+function getAmountIn(
+    uint256 amountOut,
+    uint256 reserveIn,
+    uint256 reserveOut
+) public pure returns (uint256) {
+    if (amountOut == 0) revert InsufficientAmount();
+    if (reserveIn == 0 || reserveOut == 0) revert InsufficientLiquidity();
+
+    uint256 numerator = reserveIn * amountOut * 1000;
+    uint256 denominator = (reserveOut - amountOut) * 997;
+
+    return (numerator / denominator) + 1;
+}
+```
+
+最后实现`getAmountsIn`，可以看作简单版的`getAmountIn`。与`getAmountsOut`类似，但是它的逆序，从最后一个address往前推。最后获得确切的输入代币数量。
+
+最后看回函数`swapTokenForExactTokens`，同样的，处理顺序也差不多
+
+1. 获取对应`path`的代币数量`amounts`
+
+2. 检查输入数量是否小于计算出来的输入数量
+
+3. 转账代币到正确地址
+
+4. 完成路径中不同代币的`swap`
+
+```solidity
+function swapTokenForExactTokens(
+        uint256 amountOut,
+        uint256 amountInMax,
+        address[] calldata path,
+        address to
+    ) public returns (uint256[] memory amounts) {
+        amounts = MyuniswapV2Library.getAmountsIn(
+            address(factory),
+            amountOut,
+            path
+        );
+
+        if(amounts[amounts.length - 1] > amountInMax) {
+            revert ExcessiveInputAmount();
+        }
+        _saferTransferFrom(
+            path[0],
+            msg.sender,
+            MyuniswapV2Library.pairFor(address(factory), path[0], path[1]),
+            amounts[0]
+        );
+        _swap(amounts, path, to);
+    }
+```
+
+### 交换费用
+
+之前在`Pair`中写的`swap`函数没有包括交易费用，所以这次需要修改这个bug。
+
+1. 根据给出的`amount0Out`和`amount1Out`，先完成转移代币操作
+
+2. 计算出`Pair`两种代币新的储存量`balance0`和`balance1`
+
+3. 计算交换前两种代币数量`amount0In`和`amount1In`
+
+4. 检查`amount0In`和`amount1In`都不等于零，否则就是无效输入
+
+```solidity
+if (amount0Out > 0) _safeTransfer(token0, to, amount0Out);
+if (amount1Out > 0) _safeTransfer(token1, to, amount1Out);
+
+uint256 balance0 = IERC20(token0).balanceOf(address(this));
+uint256 balance1 = IERC20(token1).balanceOf(address(this));
+
+uint256 amount0In = balance0 > reserve0 - amount0Out
+    ? balance0 - (reserve0 - amount0Out)
+    : 0;
+uint256 amount1In = balance1 > reserve1 - amount1Out
+    ? balance1 - (reserve1 - amount1Out)
+    : 0;
+
+if (amount0In == 0 && amount1In == 0) revert InsufficientInputAmount();
+```
+
+我们计算出调整后的余额：调整前的余额减去手续费（0.3%）
+
+接着计算出新的$k$，确保新的$k$大于或等于久的$k$。
+
+```solidity
+uint256 balance0Adjusted = (balance0 * 1000) - (amount0In * 3);
+uint256 balance1Adjusted = (balance1 * 1000) - (amount1In * 3);
+
+if (
+    balance0Adjusted * balance1Adjusted <
+    uint256(reserve0_) * uint256(reserve1_) * (1000**2)
+) revert InvalidK();
+```
+
+### 闪电贷
+
+Uniswap中的
+
+闪电贷：一种**无抵押**贷款，允许用户在一次交易中借入大量资产，但必须在**同一交易**中**归还**。这意味着，如果贷款未能在同一交易中归还，整个交易将被撤销。这种贷款通常用于套利、偿还债务或进行其他类型的金融操作。
+
+闪电兑换：允许交易者在交易后期之前接收资产并在其他地方使用它们，然后再支付（或归还）它们。
+
+关于闪电贷的相关知识我后面再开一章详细介绍，也可以到**jeiwan**大佬的blog看关于uniswap的**Flash loan**
+
+### 重入锁
+
+最后，我们要保证在调用外部函数的时候，确保不会受到重入攻击，可以在`Pair`函数中添加`modifier nonReentrant()`来确保`swap`不会受到重入攻击
+
+添加变量
+
+```solidity
+contract MyuniswapV2Pair is ERC20, Math {
+    ...
+    bool private isEntered;
+    ...
+}
+```
+
+modifier
+
+```solidity
+  modifier nonReentrant() {
+      require(!isEntered);
+      isEntered = true;
+
+      _;
+
+      isEntered = false;
+  }
+```
+
+`swap`添加`nonReentrant`
+
+```solidity
+function swap(
+        uint256 amount0Out, 
+        uint256 amount1Out,
+        address to,
+        bytes calldata data
+    ) public nonReentrant {
+```
+
+当然也可以用oppenZeppelin的`ReentrancyGuard`
+
+> https://docs.openzeppelin.com/contracts/4.x/api/security
+
+
+
+## 总结
+
+Uniswap V2 的大致内容就到这里，从V1到V2，代码慢慢开始复杂，但是也离不开最基本的公式$x*y = k$，这一版还有很多内容不完美，后面再慢慢补上。
+
+还有V3的内容，更加的复杂，这一条solidity之路注定不平整。
